@@ -64,7 +64,8 @@ from .github_factory_events import (
 )
 from .github_review_audit import claim_review_delivery, settle_review_delivery
 from .github_review_events import FeedbackIgnored, FeedbackUnavailable
-from .models import AgentChannel, WorkItem
+from .models import AgentChannel, PersonalClaudeEnrollment, WorkItem
+from .personal_execution import OwnerContext
 from .workitem_dispatch import Admission, DispatchConflict
 from .workspace_policy import repository_is_allowed
 
@@ -250,8 +251,6 @@ def _facts(notice: FactoryNotice, binding: AgentChannel, registry: ForgeRegistry
         trigger_label=(
             effective_trigger_label(binding, registry) if notice.disposition == "admit" else None
         ),
-        # The installation's mode and never an owner: a webhook carries no
-        # verified owner, and its sender is not one (#5376).
         model_auth_mode=get_settings().factory_model_auth_mode,
     )
 
@@ -442,6 +441,26 @@ async def admit_notice(
         # No local history: the code host's own publications decide (#4629).
         await _refuse_rediscovered(notice, settings, client, verified)
     facts = _facts(notice, binding, registry)
+    if existing is None and notice.disposition == "admit":
+        from .factory_slack import resolve_github_requester
+
+        principal = await resolve_github_requester(
+            session,
+            agent_id=binding.agent_id,
+            tracker_host=facts.issue.host,
+            account_id=notice.sender_id,
+        )
+        owner = None
+        if principal is not None and facts.model_auth_mode == "personal":
+            enrollment = await session.scalar(
+                select(PersonalClaudeEnrollment).where(
+                    PersonalClaudeEnrollment.principal_id == principal,
+                    PersonalClaudeEnrollment.active.is_(True),
+                )
+            )
+            if enrollment is not None:
+                owner = OwnerContext(enrollment.tenant_id, principal, enrollment.generation)
+        facts = replace(facts, requester_principal_id=principal, owner=owner)
     # Dispatch helpers commit between WorkItem creation and request creation.
     # Keep those commits inside savepoints so the caller's issue lock remains
     # held until admission and delivery settlement commit together.

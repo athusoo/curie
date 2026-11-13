@@ -773,9 +773,10 @@ print(json.dumps(graph))
         // kind 0158 allows. Owner tuple reads require 0159, personal custody
         // reads and enrollment fences require 0160, and agent version reads
         // select the 0162 result policy columns. Owner coding instructions require
-        // the profile and policy tables introduced by 0165.
-        assert_eq!(candidate.schema_min, "0165");
-        assert_eq!(candidate.schema_head, "0165");
+        // the profile and policy tables introduced by 0165; requester selections
+        // require the 0168 admission columns.
+        assert_eq!(candidate.schema_min, "0168");
+        assert_eq!(candidate.schema_head, "0168");
         assert_eq!(
             candidate.schema_head.as_str(),
             catalog().revisions.last().unwrap()
@@ -828,7 +829,10 @@ print(json.dumps(graph))
         assert!(!live_in_window("0162", &current));
         assert!(!live_in_window("0163", &current));
         assert!(!live_in_window("0164", &current));
-        assert!(live_in_window("0165", &current));
+        assert!(!live_in_window("0165", &current));
+        assert!(!live_in_window("0166", &current));
+        assert!(!live_in_window("0167", &current));
+        assert!(live_in_window("0168", &current));
         assert!(!live_in_window("0075", &current));
         assert!(!live_in_window("0076", &current));
         let retained = window_for("0.12.0").expect("published foundation remains catalogued");

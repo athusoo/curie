@@ -71,6 +71,7 @@ class AdmissionFacts(BaseModel):
     request_id: uuid.UUID
     model_auth_mode: ModelAuthMode = "service"
     owner: OwnerContextIn | None = None
+    requester_principal_id: uuid.UUID | None = None
 
     def admission(self) -> workitem_dispatch.Admission:
         tracker, repository, owner = self.tracker, self.repository, self.owner
@@ -93,6 +94,7 @@ class AdmissionFacts(BaseModel):
             objective=self.objective,
             requester=self.requester,
             request_id=self.request_id,
+            requester_principal_id=self.requester_principal_id,
             model_auth_mode=self.model_auth_mode,
             owner=(
                 OwnerContext(
