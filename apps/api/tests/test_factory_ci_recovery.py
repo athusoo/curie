@@ -8,6 +8,7 @@ forge_fakes.github_comments. Postgres, Valkey and production wiring are real.
 
 from __future__ import annotations
 
+import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -462,7 +463,19 @@ def test_stale_metadata_cannot_recover_until_fresh_checks_exist(
 
 @pytest.fixture
 def migration_admitted(isolated_migration_db: Any, request: pytest.FixtureRequest) -> Any:
+    from _migration_support import alembic_config
+    from alembic import command
+
     isolated_migration_db.at("0163")
+    agent_id = uuid.uuid4()
+    _execute(
+        "INSERT INTO curie.agents (id, name) VALUES (:id, 'acme-ci-migration')",
+        {"id": agent_id},
+    )
+    query = "SELECT * FROM curie.agents WHERE id = :id"
+    before = _rows(query, {"id": agent_id})
+    command.upgrade(alembic_config(), "head")
+    assert _rows(query, {"id": agent_id}) == before
     return request.getfixturevalue("admitted")
 
 
@@ -481,7 +494,7 @@ def test_additive_migration_preserves_existing_failed_execution(migration_admitt
     )
     command.downgrade(config, "0162")
     assert _snapshot(published["id"]) == before
-    command.upgrade(config, "0163")
+    command.upgrade(config, "head")
     assert _snapshot(published["id"]) == before
     assert _rows("SELECT request_id FROM curie.factory_ci_observations") == []
 
