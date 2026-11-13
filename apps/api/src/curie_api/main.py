@@ -91,6 +91,7 @@ from .routers import (
     deployments,
     directory,
     evals,
+    factory_capability,
     factory_facts,
     factory_slack,
     factory_status,
@@ -721,6 +722,7 @@ def create_app(
     app.include_router(remediation_qualifications.router)
     app.include_router(remediation_receipts.router)
     app.include_router(deployments.router)
+    app.include_router(factory_capability.router)
     app.include_router(bundles.router)
     app.include_router(deploy_targets.router)
     app.include_router(github.router)

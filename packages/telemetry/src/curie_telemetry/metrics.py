@@ -546,6 +546,9 @@ _HTTP_OPERATIONS = [
     # Deliberate progress from a running turn (ADR 0130).
     "/v1/turn-progress/{progress_id}",
     "/v1/factory/cards/{token}.svg",
+    # Factory capability manifest reads (#4485).
+    "/v1/factory/capability/deployments/{deployment_id}",
+    "/v1/factory/capability/upgrade-report",
     # Forge credential health (#4630).
     "/forges/credentials/health",
     "/factory/facts",

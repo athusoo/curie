@@ -109,7 +109,7 @@ def test_released_application_declares_a_machine_readable_window() -> None:
     window = load_window()
     assert window.schema_min == APP_SCHEMA_MIN
     assert window.schema_head == HEAD
-    assert HEAD == "0166"
+    assert HEAD == "0167"
     kinds = load_kinds()
     assert kinds[CONTRACT] == KIND_CONTRACT
     # 0103 drops the GitHub identity columns (ADR 0197): a contract below the floor.
@@ -122,6 +122,7 @@ def test_released_application_declares_a_machine_readable_window() -> None:
     assert kinds["0164"] == KIND_EXPAND
     assert kinds["0165"] == KIND_EXPAND
     assert kinds["0166"] == KIND_EXPAND
+    assert kinds["0167"] == KIND_EXPAND
     assert kinds[PREV] == KIND_EXPAND
     assert kinds["0016"] == KIND_IRREVERSIBLE
 
@@ -253,8 +254,9 @@ def test_upgrade_from_either_train_applies_the_missing_sibling_and_preserves_row
             "0164",
             "0165",
             "0166",
+            "0167",
         }
-    assert current_revision() == "0166"
+    assert current_revision() == "0167"
     assert sql_rows("SELECT name FROM curie.agents WHERE id=:id", {"id": agent_id}) == [
         ("merge-example",)
     ]
@@ -364,7 +366,7 @@ def test_agent_reads_refuse_the_schema_before_deploy_notification_expand() -> No
     # cached facts and request delivery require the 0164 tables, and Slack
     # kickoff thread origin reads require 0166.
     # Owner coding profiles and tenant policies require 0165, which stays below this floor.
-    for revision in sorted(known - {"0166"}):
+    for revision in sorted(known - {"0166", "0167"}):
         assert can_serve(revision, window, known) is False
     assert can_serve("0140", window, known) is False
     assert can_serve("0141", window, known) is False

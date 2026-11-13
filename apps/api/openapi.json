@@ -4715,6 +4715,93 @@
         "title": "Capability",
         "type": "object"
       },
+      "CapabilityRead": {
+        "description": "The admission-facing read of one deployment's capability evidence.",
+        "properties": {
+          "action": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Action"
+          },
+          "base_commit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Commit"
+          },
+          "manifest": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Manifest"
+          },
+          "manifest_digest": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Manifest Digest"
+          },
+          "ready": {
+            "title": "Ready",
+            "type": "boolean"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "repository_declaration": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repository Declaration"
+          },
+          "verification_source": {
+            "title": "Verification Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ready",
+          "verification_source"
+        ],
+        "title": "CapabilityRead",
+        "type": "object"
+      },
       "ChannelAddress": {
         "additionalProperties": false,
         "properties": {
@@ -17736,6 +17823,35 @@
           "missing"
         ],
         "title": "UiEvidenceSealOut",
+        "type": "object"
+      },
+      "UpgradeBinding": {
+        "description": "One active deployment in the upgrade report.",
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "agent_id": {
+            "title": "Agent Id",
+            "type": "string"
+          },
+          "deployment_id": {
+            "title": "Deployment Id",
+            "type": "string"
+          },
+          "has_capability_record": {
+            "title": "Has Capability Record",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "deployment_id",
+          "agent_id",
+          "has_capability_record",
+          "action"
+        ],
+        "title": "UpgradeBinding",
         "type": "object"
       },
       "UsageReport": {
@@ -33451,6 +33567,139 @@
         "summary": "Directory Metrics",
         "tags": [
           "teams"
+        ]
+      }
+    },
+    "/v1/factory/capability/deployments/{deployment_id}": {
+      "get": {
+        "description": "The exact recorded manifest for one deployment and its admission view.",
+        "operationId": "read_deployment_capability_v1_factory_capability_deployments__deployment_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "deployment_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Deployment Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "base_commit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Base Commit"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CapabilityRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Deployment Capability",
+        "tags": [
+          "factory-capability"
+        ]
+      }
+    },
+    "/v1/factory/capability/upgrade-report": {
+      "get": {
+        "description": "Each active deployment whose image and bundle lack a matching record.\n\nA runner-image rebind alone never marks a binding ready: only a record\nfor the exact (image digest, bundle digest) pair does. The operator\naction for each uncovered binding is build/render/redeploy.",
+        "operationId": "read_upgrade_report_v1_factory_capability_upgrade_report_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "items": {
+                      "$ref": "#/components/schemas/UpgradeBinding"
+                    },
+                    "type": "array"
+                  },
+                  "title": "Response Read Upgrade Report V1 Factory Capability Upgrade Report Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Upgrade Report",
+        "tags": [
+          "factory-capability"
         ]
       }
     },

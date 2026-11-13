@@ -777,7 +777,7 @@ print(json.dumps(graph))
         // tables, and Slack kickoff thread origin reads require 0166.
         // Owner coding profiles and tenant policies require 0165, which stays below this floor.
         assert_eq!(candidate.schema_min, "0166");
-        assert_eq!(candidate.schema_head, "0166");
+        assert_eq!(candidate.schema_head, "0167");
         assert_eq!(
             candidate.schema_head.as_str(),
             catalog().revisions.last().unwrap()

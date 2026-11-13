@@ -5229,3 +5229,55 @@ class FactoryFactsRequest(Base):
     state: Mapped[str] = mapped_column(Text, default="owed")
     answer_comment_id: Mapped[str | None] = mapped_column(Text, default=None)
     answered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
+
+
+class CapabilityRecord(Base):
+    """One immutable, deployment-bound factory capability manifest (#4485).
+
+    ADR 0199 decision 3: the manifest and its digest are recorded with the
+    deployed bundle and runner identity at deployment time. Write-once per
+    (agent, runner image digest, bundle digest): the bytes are evidence of one
+    build, and evidence never mutates. A missing, malformed or stale record is
+    missing evidence for admission, never an inferred ready manifest.
+    """
+
+    __tablename__ = "capability_records"
+    __table_args__ = (
+        CheckConstraint(
+            "schema_version = 1", name="capability_records_schema_version_ck"
+        ),
+        CheckConstraint(
+            "image_digest ~ '^sha256:[0-9a-f]{64}$'",
+            name="capability_records_image_digest_ck",
+        ),
+        CheckConstraint(
+            "bundle_digest ~ '^sha256:[0-9a-f]{64}$'",
+            name="capability_records_bundle_digest_ck",
+        ),
+        CheckConstraint(
+            "digest ~ '^sha256:[0-9a-f]{64}$'", name="capability_records_digest_ck"
+        ),
+        UniqueConstraint(
+            "agent_id",
+            "image_digest",
+            "bundle_digest",
+            name="capability_records_binding_key",
+        ),
+        {"schema": SCHEMA},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    agent_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey(f"{SCHEMA}.agents.id", ondelete="CASCADE"), index=True
+    )
+    version_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey(f"{SCHEMA}.agent_versions.id", ondelete="CASCADE"), index=True
+    )
+    schema_version: Mapped[int] = mapped_column(Integer, default=1)
+    image_digest: Mapped[str] = mapped_column(Text)
+    bundle_digest: Mapped[str] = mapped_column(Text)
+    digest: Mapped[str] = mapped_column(Text)
+    manifest_bytes: Mapped[str] = mapped_column(Text)
+    recorded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
