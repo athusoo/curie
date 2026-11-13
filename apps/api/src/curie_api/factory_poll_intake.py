@@ -50,7 +50,7 @@ from curie_api.factory_label_reconcile import (
     tracker_work_item_repositories,
 )
 
-from . import github_factory
+from . import factory_intake_notices, github_factory
 from .config import Settings
 from .forges.errors import Unavailable
 from .forges.github.binding import GITHUB_CHANNEL_KIND
@@ -62,7 +62,6 @@ from .forges.github.review_polling import (
     admit_reviews,
     advance,
     human_actor,
-    label_actor,
     open_pulls,
     read_pull,
     repository_payload,
@@ -107,6 +106,7 @@ async def _label_already_admitted(
     sessionmaker: async_sessionmaker[AsyncSession],
     issue: TrackerIssueRef,
     event: dict[str, Any],
+    installation_id: int,
 ) -> bool:
     """True when this label event is not newer than the work item's latest request.
 
@@ -120,7 +120,10 @@ async def _label_already_admitted(
         return False
     async with sessionmaker() as session:
         item = await github_factory.work_item_for(session, issue)
-        if item is None or item.cancelled_at is not None:
+        if (
+            item is None or item.cancelled_at is not None
+            or item.code_host_installation_id != installation_id
+        ):
             return False
         latest = await session.scalar(
             select(ExecutionRequest.created_at)
@@ -357,13 +360,8 @@ async def _admit_labeled(
         try:
             events = await tracker.issue_events(number)
             event = last_label_event(events, label)
-            if event is None or type(event.get("id")) is not int:
-                continue
-            try:
-                sender_id, sender_login = label_actor(event, app_id=tracker.app_id)
-            except FeedbackIgnored as exc:
-                logger.info("factory label actor refused %s#%d: %s", repo, number, exc.code)
-                continue
+            if event is None:
+                raise FeedbackUnavailable("label_events_unavailable")
             notice = FactoryNotice(
                 uuid.uuid4(),
                 "issues",
@@ -373,15 +371,17 @@ async def _admit_labeled(
                 repository_id,
                 repo,
                 number,
-                sender_id,
-                sender_login,
+                0,
+                "",
                 label_event_at=parse_time(event.get("created_at")),
                 label=label,
-                label_event_id=event["id"],
             )
-            if await _label_already_admitted(sessionmaker, tracker.issue(number), event):
+            notice = factory_intake_notices.observe_label(notice, event, app_id=tracker.app_id)
+            if await _label_already_admitted(
+                sessionmaker, tracker.issue(number), event, installation_id
+            ):
                 # Reconcile an observed base edit on the existing work item.
-                notice = replace(notice, disposition="base_label")
+                notice = replace(notice, previously_admitted=True)
             await _apply_notice(sessionmaker, settings, client, notice, tracker, repository)
         except (Unavailable, FeedbackUnavailable, FeedbackIgnored):
             deferred = True
@@ -623,6 +623,12 @@ async def _apply_notice(
             await session.rollback()
             return
         await session.commit()
+    await factory_intake_notices.sync_intake_notices(
+        sessionmaker,
+        settings,
+        owner="poll-intake",
+        client=client,
+    )
 
 
 @dataclass(frozen=True)

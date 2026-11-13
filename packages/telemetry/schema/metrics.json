@@ -378,6 +378,14 @@
       "type": "counter",
       "unit": "{job}"
     },
+    "curie.factory.intake.notice.oldest_owed_age_seconds": {
+      "attributes": {},
+      "cardinality_bound": 1,
+      "description": "Age of the oldest refused trigger-label notice awaiting delivery.",
+      "monotonic": false,
+      "type": "gauge",
+      "unit": "s"
+    },
     "curie.history.persistence.failure": {
       "attributes": {
         "limit": [
