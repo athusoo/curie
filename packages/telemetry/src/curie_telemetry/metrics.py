@@ -554,7 +554,9 @@ _HTTP_OPERATIONS = [
     "/schedules/{agent}/{name}/pause",
     "/schedules/{agent}/{name}/resume",
     "/work-items",
+    "/work-items/completion-contract",
     "/work-items/issue-read",
+    "/work-items/tracker-result",
     "/work-items/{work_item_id}",
     "/work-items/{work_item_id}/usage",
     "/work-items/{work_item_id}/recovery",
@@ -672,6 +674,8 @@ _WORK_ITEM_RECONCILER_STEP_ATTRIBUTES = {
         "sync_status_comments",
         "redispatch_lapsed_acquisitions",
         "reconcile_base_transitions",
+        "expire_tracker_results",
+        "deliver_tracker_results",
         "publish_execute_wakes",
     ],
 }

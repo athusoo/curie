@@ -94,7 +94,8 @@ def graph_payload() -> dict[str, Any]:
         # 0159 adds the execution owner columns, 0160 adds the personal
         # custody table and enrollment fence, and 0162 adds the agent version
         # result policy columns this candidate reads. Owner coding profiles
-        # and tenant policies require 0165.
+        # and tenant policies require 0165, and 0166 adds the execution
+        # request completion contract columns this candidate reads.
         ("0157", False),
         ("0158", False),
         ("0159", False),
@@ -102,7 +103,8 @@ def graph_payload() -> dict[str, Any]:
         ("0162", False),
         ("0163", False),
         ("0164", False),
-        ("0165", True),
+        ("0165", False),
+        ("0166", True),
         ("0000", True),
         ("future-expand", True),
     ],
@@ -125,7 +127,7 @@ def test_installed_candidate_decision_preserves_unknown_revision_policy(
     )
 
 
-def test_candidate_window_raises_the_floor_to_0165() -> None:
+def test_candidate_window_raises_the_floor_to_0166() -> None:
     """@spec CONNECTOR-REQUESTER-1: agent ORM reads require the 0151 requester columns.
 
     Approval ORM reads require the 0154 reminder cursor, and dynamic approval
@@ -134,11 +136,12 @@ def test_candidate_window_raises_the_floor_to_0165() -> None:
     0158 allows. Execution owner reads require 0159, personal custody reads
     and enrollment fences require 0160, and agent version reads select the
     0162 result policy columns. Owner coding profiles and tenant policies
-    require 0165, which is the floor.
+    require 0165, and execution request reads select the 0166 completion
+    contract columns, which is the floor.
     """
     window = shared().load_metadata().window
-    assert window.schema_min == "0165"
-    assert window.schema_head == "0165"
+    assert window.schema_min == "0166"
+    assert window.schema_head == "0166"
 
 
 @pytest.mark.parametrize("mutation", ["bounds", "parent", "cycle", "duplicate", "type"])
