@@ -585,6 +585,15 @@ class Deployment(Base):
     # operator allowlist authorizes it.
     workspace_enabled: Mapped[bool] = mapped_column(default=False)
     status: Mapped[str] = mapped_column(server_default="active")
+    # The closed-world capability manifest recorded at deployment (#4485
+    # decision 5): the manifest's canonical JSON and the SHA-256 of those
+    # bytes, bound to this deployment's image and bundle digests. Both absent
+    # on a deployment created before capability recording (decision 6), which
+    # reads as missing evidence, never an inferred ready manifest.
+    capability_manifest: Mapped[dict[str, Any] | None] = mapped_column(
+        JSONB(none_as_null=True), default=None
+    )
+    capability_manifest_digest: Mapped[str | None] = mapped_column(String(64), default=None)
     deployed_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
 

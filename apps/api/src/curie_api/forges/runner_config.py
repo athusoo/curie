@@ -147,6 +147,17 @@ class ToolManifest(_Model):
         return value
 
 
+class ToolCatalogComponent(_Model):
+    """A separately probed component of a catalog tool (#4485 decision 1).
+
+    `cargo fmt` and `cargo clippy` are components of `cargo`: distinct
+    executables under the tool's own binary, probed with their own commands.
+    """
+
+    name: NonBlank
+    command: Command
+
+
 class ToolCatalogEntry(_Model):
     """Pinned platform layers, writable caches and the catalog version probe."""
 
@@ -158,6 +169,7 @@ class ToolCatalogEntry(_Model):
     cache_env: dict[CacheVariable, CachePath]
     registry_hosts: tuple[RegistryHost, ...]
     probe: Command
+    components: tuple[ToolCatalogComponent, ...] = ()
 
     @model_validator(mode="after")
     def check_platforms_and_caches(self) -> Self:
@@ -167,6 +179,10 @@ class ToolCatalogEntry(_Model):
             raise ValueError("source_digests must pin exactly the declared platforms")
         if any(".." in PurePosixPath(path).parts for path in self.cache_env.values()):
             raise ValueError("catalog cache paths must stay under the writable /home/runner")
+        if len({component.name for component in self.components}) != len(self.components):
+            raise ValueError("catalog components must have unique names")
+        if any(component.name == self.name for component in self.components):
+            raise ValueError("a catalog component must not reuse the tool's own name")
         return self
 
 

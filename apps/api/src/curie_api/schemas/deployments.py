@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -124,6 +124,19 @@ class ConnectorManifests(BaseModel):
     # plugin.json triggers as stored. Missing, null, and non-list values are
     # an empty list. Entries are not validated or rewritten.
     triggers: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class CapabilityManifestOut(BaseModel):
+    """A deployment's recorded capability manifest, as evidence (#4485).
+
+    ``digest`` is the canonical-JSON SHA-256 of the recorded manifest bytes;
+    callers replay it in later operations to detect drift or mismatch.
+    """
+
+    state: Literal["ready", "environment_unknown"]
+    digest: str | None = None
+    manifest: dict[str, Any] | None = None
+    reason: str | None = None
 
 
 class DeploymentCreate(BaseModel):

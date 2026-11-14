@@ -423,6 +423,10 @@ _HTTP_OPERATIONS = [
     "/deploy-targets/resolve",
     "/deployments",
     "/deployments/{deployment_id}",
+    # The deployment capability manifest's record, read and effective view
+    # (#4485 decision 5).
+    "/deployments/{deployment_id}/capability-manifest",
+    "/deployments/{deployment_id}/capability-manifest/effective-view",
     "/evals/matrix",
     "/evals/report",
     "/evals/trigger",

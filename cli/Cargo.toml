@@ -42,6 +42,10 @@ path = "tests/factory_preparation_install.rs"
 name = "curie_skills_install"
 path = "tests/curie_skills_install.rs"
 
+[[test]]
+name = "factory_capability_manifest"
+path = "tests/factory_capability_manifest.rs"
+
 [dependencies]
 curie-aci-protocol = { path = "../packages/aci-protocol/generated/rust" }
 anstream = "1"
