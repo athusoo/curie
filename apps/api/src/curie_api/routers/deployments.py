@@ -9,7 +9,7 @@ from curie_api.crud import deployments as crud_deployments
 from curie_api.crud import versions as crud_versions
 from curie_api.schemas.deployments import DeploymentCreate, DeploymentOut
 
-from .. import approver_tickets, deploy
+from .. import approver_tickets, capability_manifest, deploy
 from ..auth import require_api_key
 from ..deps import SessionDep, StoreDep
 
@@ -108,3 +108,146 @@ async def end_deployment(deployment_id: uuid.UUID, session: SessionDep) -> None:
     if deployment is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "deployment not found")
     await crud_deployments.end_deployment(session, deployment)
+
+
+# --- capability manifest (#4485) --------------------------------------------
+
+
+@router.get("/{deployment_id}/capability-manifest")
+async def get_capability_manifest(deployment_id: uuid.UUID, session: SessionDep) -> object:
+    """The exact recorded capability manifest bytes for one deployment.
+
+    An authenticated read (decision 5): it returns the exact recorded manifest
+    and its digest, or ``{"state": "environment_unknown", ...}`` when the
+    record is missing, malformed, mismatched or stale. It never claims a
+    capability the record does not name, and no credential value appears.
+    """
+
+    deployment = await crud_deployments.get_deployment(session, deployment_id)
+    if deployment is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "deployment not found")
+    evidence = capability_manifest.read_recorded_manifest(deployment)
+    if evidence.state != "ready":
+        return {
+            "state": "environment_unknown",
+            "reason": evidence.reason,
+        }
+    assert evidence.manifest is not None and evidence.digest is not None
+    return {
+        "state": "ready",
+        "digest": evidence.digest,
+        "manifest": capability_manifest.manifest_json(evidence.manifest),
+    }
+
+
+@router.post("/{deployment_id}/capability-manifest")
+async def put_capability_manifest(
+    deployment_id: uuid.UUID, session: SessionDep, body: dict[str, object]
+) -> object:
+    """Record a manifest for one deployment.
+
+    Refuses a malformed manifest (422) and returns the recorded digest. This
+    is the deployment-side writer decision 5 names; recording a manifest for a
+    newly deployed version does not mutate an active execution or retroactively
+    change an older version (decision 6).
+    """
+
+    deployment = await crud_deployments.get_deployment(session, deployment_id)
+    if deployment is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "deployment not found")
+    try:
+        digest = await capability_manifest.record_capability_manifest(
+            session, deployment, body
+        )
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+    await session.commit()
+    return {"state": "ready", "digest": digest}
+
+
+@router.post("/{deployment_id}/capability-manifest/effective-view")
+async def get_effective_view(
+    deployment_id: uuid.UUID, session: SessionDep, body: dict[str, object]
+) -> object:
+    """The effective admission view for one deployment (#4485 decision 4).
+
+    The caller supplies the ticket's exact immutable base commit and the
+    repository's ``.curie/verification.json`` content AS READ AT THAT COMMIT
+    (the deployment side cannot read a repository file at a commit through the
+    CodeHost port, and the admission consumer is #4450, out of scope here).
+    The view composes the immutable recorded manifest with that base-commit
+    declaration: bundle checks win when the recorded manifest declares any,
+    else the repository declaration stands, bound to the base commit it was
+    read at -- never a moving branch tip. A missing record or an unreadable
+    repository file yields ``environment_unknown``, never a ready verdict.
+    """
+
+    deployment = await crud_deployments.get_deployment(session, deployment_id)
+    if deployment is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "deployment not found")
+    base_commit = body.get("base_commit")
+    if not isinstance(base_commit, str) or not base_commit.strip():
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "base_commit is required: the ticket's immutable base commit",
+        )
+    raw = body.get("verification")
+    unreadable = body.get("unreadable")
+    if unreadable is not None and not isinstance(unreadable, str):
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "unreadable must name why the repository verification file does not parse",
+        )
+    evidence = capability_manifest.read_recorded_manifest(deployment)
+    if evidence.state != "ready":
+        return {
+            "state": "environment_unknown",
+            "reason": evidence.reason,
+            "base_commit": base_commit,
+        }
+    assert evidence.manifest is not None
+    if evidence.manifest.verification_checks:
+        # Precedence, first branch: the bundle's own checks are bound with
+        # the deployed bundle, so the repository file is never consulted.
+        effective = capability_manifest.ResolvedVerificationDeclaration(
+            source="bundle", checks=list(evidence.manifest.verification_checks)
+        )
+    elif raw is not None:
+        if not isinstance(raw, dict):
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "verification must be the parsed .curie/verification.json object",
+            )
+        try:
+            effective = capability_manifest.resolve_base_verification(
+                raw, base_commit=base_commit
+            )
+        except ValueError as exc:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+    else:
+        # The file is absent or unreadable at the base commit: no declared
+        # checks, with the reason named when it is unreadable.
+        effective = capability_manifest.resolve_base_verification(
+            None, base_commit=base_commit, unreadable=unreadable
+        )
+    response: dict[str, object] = {
+        "state": "ready",
+        "digest": evidence.digest,
+        "verification_source": effective.source,
+        "checks": [
+            {
+                "id": check.id,
+                "route": check.route,
+                **({"delegated_to": check.delegated_to} if check.delegated_to else {}),
+            }
+            for check in effective.checks
+        ],
+        # The ticket's immutable base commit, as supplied: part of the
+        # admission evidence whichever branch won the precedence.
+        "base_commit": base_commit,
+    }
+    if effective.unreadable is not None:
+        # An unreadable repository file is unknown, never a silent no-check
+        # success: the reason travels with the view (#4485 decision 4).
+        response["unreadable"] = effective.unreadable
+    return response

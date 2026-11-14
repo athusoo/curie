@@ -1,4 +1,38 @@
 {
+  "$defs": {
+    "ToolCatalogComponent": {
+      "additionalProperties": false,
+      "description": "A separately probed component of a catalog tool (#4485 decision 1).\n\n`cargo fmt` and `cargo clippy` are components of `cargo`: distinct\nexecutables under the tool's own binary, probed with their own commands.",
+      "properties": {
+        "command": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "prefixItems": [
+            {
+              "pattern": "\\S",
+              "type": "string"
+            }
+          ],
+          "title": "Command",
+          "type": "array"
+        },
+        "name": {
+          "minLength": 1,
+          "pattern": "\\S",
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "command"
+      ],
+      "title": "ToolCatalogComponent",
+      "type": "object"
+    }
+  },
   "$id": "https://curietech.ai/schemas/tool-catalog-entry.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
@@ -80,6 +114,14 @@
       },
       "title": "Cache Env",
       "type": "object"
+    },
+    "components": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/ToolCatalogComponent"
+      },
+      "title": "Components",
+      "type": "array"
     },
     "name": {
       "enum": [

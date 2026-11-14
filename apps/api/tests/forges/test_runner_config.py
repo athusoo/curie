@@ -252,6 +252,10 @@ def _catalog() -> dict[str, Any]:
         "cache_env": {"UV_CACHE_DIR": "/home/runner/.cache/uv"},
         "registry_hosts": ["registry.example.com"],
         "probe": ["uv", "--version"],
+        # A tool with no separately-probed components (#4485 decision 1):
+        # `uv` is a single executable, unlike `cargo`, whose `fmt` and
+        # `clippy` components probe with their own commands.
+        "components": [],
     }
 
 

@@ -28691,6 +28691,208 @@
         ]
       }
     },
+    "/deployments/{deployment_id}/capability-manifest": {
+      "get": {
+        "description": "The exact recorded capability manifest bytes for one deployment.\n\nAn authenticated read (decision 5): it returns the exact recorded manifest\nand its digest, or ``{\"state\": \"environment_unknown\", ...}`` when the\nrecord is missing, malformed, mismatched or stale. It never claims a\ncapability the record does not name, and no credential value appears.",
+        "operationId": "get_capability_manifest_deployments__deployment_id__capability_manifest_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "deployment_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Deployment Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Get Capability Manifest Deployments  Deployment Id  Capability Manifest Get"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Capability Manifest",
+        "tags": [
+          "deployments"
+        ]
+      },
+      "post": {
+        "description": "Record a manifest for one deployment.\n\nRefuses a malformed manifest (422) and returns the recorded digest. This\nis the deployment-side writer decision 5 names; recording a manifest for a\nnewly deployed version does not mutate an active execution or retroactively\nchange an older version (decision 6).",
+        "operationId": "put_capability_manifest_deployments__deployment_id__capability_manifest_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "deployment_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Deployment Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "title": "Body",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Put Capability Manifest Deployments  Deployment Id  Capability Manifest Post"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Capability Manifest",
+        "tags": [
+          "deployments"
+        ]
+      }
+    },
+    "/deployments/{deployment_id}/capability-manifest/effective-view": {
+      "post": {
+        "description": "The effective admission view for one deployment (#4485 decision 4).\n\nThe caller supplies the ticket's exact immutable base commit and the\nrepository's ``.curie/verification.json`` content AS READ AT THAT COMMIT\n(the deployment side cannot read a repository file at a commit through the\nCodeHost port, and the admission consumer is #4450, out of scope here).\nThe view composes the immutable recorded manifest with that base-commit\ndeclaration: bundle checks win when the recorded manifest declares any,\nelse the repository declaration stands, bound to the base commit it was\nread at -- never a moving branch tip. A missing record or an unreadable\nrepository file yields ``environment_unknown``, never a ready verdict.",
+        "operationId": "get_effective_view_deployments__deployment_id__capability_manifest_effective_view_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "deployment_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Deployment Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "title": "Body",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Get Effective View Deployments  Deployment Id  Capability Manifest Effective View Post"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Effective View",
+        "tags": [
+          "deployments"
+        ]
+      }
+    },
     "/directory/binding": {
       "get": {
         "operationId": "read_directory_binding_directory_binding_get",

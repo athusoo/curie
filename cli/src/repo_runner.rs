@@ -35,6 +35,18 @@ const REPOSITORY_TARGET: &str = "curie-repository";
 const COMPOSED_CONTEXT: &str = "curie-composed";
 const PROBE_OUT: &str = "/tmp/curie-tool-manifest.json";
 
+/// One separately probed component of a catalog tool (#4485 decision 1).
+///
+/// `cargo fmt` and `cargo clippy` are components of `cargo`: distinct
+/// executables under the tool's own binary, probed with their own commands, so
+/// a manifest never claims `cargo` itself covers them.
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct CatalogComponent {
+    pub name: String,
+    pub command: Vec<String>,
+}
+
 /// One pinned catalog tool.
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -45,6 +57,8 @@ pub struct CatalogEntry {
     pub cache_env: BTreeMap<String, String>,
     pub registry_hosts: Vec<String>,
     pub probe: Vec<String>,
+    #[serde(default)]
+    pub components: Vec<CatalogComponent>,
 }
 
 /// The catalog, parsed once; catalog order is file order.
@@ -115,7 +129,42 @@ pub fn validate_spec(spec: &RepoRunnerSpec) -> Result<()> {
             bail!("tool {tool:?} is listed more than once");
         }
     }
-    let mut probe_names = BTreeSet::new();
+    // Every selected catalog component name is also a probe name (#4485
+    // decision 1): a declared probe may not reuse one, because the component
+    // already probes it and the build records both under distinct names.
+    let mut component_names = BTreeSet::new();
+    for entry in selected_entries(spec) {
+        for component in &entry.components {
+            if component.name.trim().is_empty() {
+                bail!(
+                    "catalog tool {:?} declares a component with a blank name",
+                    entry.name
+                );
+            }
+            if let Some(first) = component.command.first() {
+                if first.trim().is_empty() {
+                    bail!(
+                        "catalog tool {:?} component {:?} probes a blank executable",
+                        entry.name,
+                        component.name
+                    );
+                }
+            } else {
+                bail!(
+                    "catalog tool {:?} component {:?} has an empty command",
+                    entry.name,
+                    component.name
+                );
+            }
+            if !component_names.insert(component.name.as_str()) {
+                bail!(
+                    "component name {:?} is declared by more than one selected tool",
+                    component.name
+                );
+            }
+        }
+    }
+    let mut probe_names = component_names.clone();
     for probe in &spec.probes {
         if probe.name.trim().is_empty() {
             bail!("a probe has a blank name; every probe needs one");
@@ -126,6 +175,12 @@ pub fn validate_spec(spec: &RepoRunnerSpec) -> Result<()> {
         if argv0.trim().is_empty() {
             bail!(
                 "probe {:?} has a blank executable as its first command word",
+                probe.name
+            );
+        }
+        if component_names.contains(probe.name.as_str()) {
+            bail!(
+                "probe {:?} reuses a selected tool component's name, which already probes it",
                 probe.name
             );
         }
@@ -196,16 +251,22 @@ pub fn selected_entries(spec: &RepoRunnerSpec) -> Vec<&'static CatalogEntry> {
         .collect()
 }
 
-/// Selected catalog probes in catalog order, then declared probes in order.
+/// Selected catalog probes in catalog order, each tool's components right
+/// after its own probe, then declared probes in order (#4485 decision 1).
 pub fn probe_runs(spec: &RepoRunnerSpec) -> Vec<ProbeRun> {
-    let mut runs: Vec<ProbeRun> = selected_entries(spec)
-        .into_iter()
-        .map(|e| ProbeRun {
-            name: e.name.clone(),
-            command: e.probe.clone(),
+    let mut runs: Vec<ProbeRun> = Vec::new();
+    for entry in selected_entries(spec) {
+        runs.push(ProbeRun {
+            name: entry.name.clone(),
+            command: entry.probe.clone(),
             source: "catalog".to_string(),
-        })
-        .collect();
+        });
+        runs.extend(entry.components.iter().map(|component| ProbeRun {
+            name: component.name.clone(),
+            command: component.command.clone(),
+            source: "catalog".to_string(),
+        }));
+    }
     runs.extend(spec.probes.iter().map(|p| ProbeRun {
         name: p.name.clone(),
         command: p.command.clone(),
@@ -528,6 +589,265 @@ pub fn bare_digest(pinned: &str) -> Result<String> {
         Some((_, digest)) if is_sha256_digest(digest) => Ok(digest.to_string()),
         _ => bail!("{pinned:?} is not pinned to a sha256 digest (`<repo>@sha256:<64 hex>`)"),
     }
+}
+
+/// The capability manifest's schema version (#4485 decision 2).
+pub const CAPABILITY_MANIFEST_SCHEMA_VERSION: u32 = 1;
+/// The `.github/` publication refusals the platform enforces (#4485 decision 3,
+/// #4435): recorded verbatim so admission and validation see the exact
+/// restriction, never a summary. `publications.py` holds the enforced strings.
+pub const PUBLICATION_RESTRICTION_GITHUB: &str =
+    "GitHub workflow changes cannot be published by this capability";
+pub const PUBLICATION_RESTRICTION_GITHUB_METADATA: &str =
+    "GitHub metadata changes cannot be published by this capability";
+
+/// One executable the closed-world manifest records: its name, the version the
+/// build's probe observed, and the exact probe command that observed it.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ManifestToolProbe {
+    pub name: String,
+    pub version: String,
+    pub probe_command: Vec<String>,
+}
+
+/// A connector the deployed bundle declares reachable, by name only (#4485
+/// decision 2). Descriptive: no credential, address or grant travels.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct DeclaredConnector {
+    pub name: String,
+}
+
+/// A service the deployed bundle declares reachable, by name only. Descriptive,
+/// like [`DeclaredConnector`].
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct DeclaredService {
+    pub name: String,
+}
+
+/// One verification check the bundle owns: its id, its route, and the
+/// required PR CI check it delegates to when the route is delegated
+/// (#4485 decision 4).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct VerificationCheck {
+    pub id: String,
+    pub route: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub delegated_to: Option<String>,
+}
+
+/// The actual built runner and bundle inputs a manifest derives from
+/// (#4485 decisions 1-2). Everything here is observed or declared, never
+/// inferred: `platform_tools` are the versions the image build's probe
+/// observed, `verification_checks`/`connectors`/`services` come from the
+/// bundle's own declarations.
+#[derive(Debug, Clone)]
+pub struct CapabilityManifestInputs {
+    /// The built runner image's `sha256:` digest.
+    pub image_digest: String,
+    /// The deployed bundle's `sha256:` digest.
+    pub bundle_digest: String,
+    /// The build input the image was built from.
+    pub spec: RepoRunnerSpec,
+    /// Every platform tool the probe observed in the built image, in probe
+    /// order: name, version, and the command that observed it.
+    pub platform_tools: Vec<ManifestToolProbe>,
+    /// The bundle's declared connectors, by name.
+    pub connectors: Vec<DeclaredConnector>,
+    /// The bundle's declared reachable services, by name.
+    pub services: Vec<DeclaredService>,
+    /// The bundle's own verification checks; empty when it declares none.
+    pub verification_checks: Vec<VerificationCheck>,
+    /// The sandbox egress class the deployed bundle runs under.
+    pub egress_class: String,
+}
+
+/// The closed-world deployment manifest (#4485 decision 2): the exact
+/// capabilities one built image and one deployed bundle had, bound to both
+/// digests. Undeclared capability is absent; nothing here grants egress,
+/// permission or credential.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct CapabilityManifest {
+    pub schema_version: u32,
+    pub image_digest: String,
+    pub bundle_digest: String,
+    /// Every probed executable in probe order: catalog tools, their
+    /// components, then declared probes.
+    pub tools: Vec<ManifestToolProbe>,
+    /// Registry hosts the selected catalog tools pull from. Probe inputs,
+    /// never egress grants: a host here does not widen the sandbox.
+    pub registry_hosts: Vec<String>,
+    pub connectors: Vec<DeclaredConnector>,
+    pub services: Vec<DeclaredService>,
+    pub verification_checks: Vec<VerificationCheck>,
+    pub egress_class: String,
+    /// The exact `.github/` publication restriction strings the platform
+    /// enforces (decision 3), workflow changes first.
+    pub publication_restrictions: Vec<String>,
+}
+
+/// Derive the manifest from actual build and bundle inputs (#4485 decisions
+/// 1-3). Refuses an image or bundle that is not pinned to a sha256 digest, so
+/// the manifest always names an immutable deployment.
+pub fn capability_manifest(inputs: &CapabilityManifestInputs) -> Result<CapabilityManifest> {
+    if !is_sha256_digest(&inputs.image_digest) {
+        bail!(
+            "the runner image is not pinned to a sha256 digest ({:?}); a capability manifest \
+             records only an immutable deployment",
+            inputs.image_digest
+        );
+    }
+    if !is_sha256_digest(&inputs.bundle_digest) {
+        bail!(
+            "the deployed bundle is not pinned to a sha256 digest ({:?}); a capability manifest \
+             binds to the exact bundle",
+            inputs.bundle_digest
+        );
+    }
+    validate_spec(&inputs.spec)?;
+    // Registry hosts come only from the selected catalog entries, in catalog
+    // order, deduplicated: they are the hosts the image's own tool layers
+    // pull from, which the probe needs, nothing wider.
+    let mut registry_hosts: Vec<String> = Vec::new();
+    for entry in selected_entries(&inputs.spec) {
+        for host in &entry.registry_hosts {
+            if !registry_hosts.contains(host) {
+                registry_hosts.push(host.clone());
+            }
+        }
+    }
+    Ok(CapabilityManifest {
+        schema_version: CAPABILITY_MANIFEST_SCHEMA_VERSION,
+        image_digest: inputs.image_digest.clone(),
+        bundle_digest: inputs.bundle_digest.clone(),
+        tools: inputs.platform_tools.clone(),
+        registry_hosts,
+        connectors: inputs.connectors.clone(),
+        services: inputs.services.clone(),
+        verification_checks: inputs.verification_checks.clone(),
+        egress_class: inputs.egress_class.clone(),
+        publication_restrictions: vec![
+            PUBLICATION_RESTRICTION_GITHUB.to_string(),
+            PUBLICATION_RESTRICTION_GITHUB_METADATA.to_string(),
+        ],
+    })
+}
+
+/// The manifest's canonical bytes (#4485 decision 2): compact JSON with
+/// sorted keys and a trailing newline, so identical inputs yield identical
+/// bytes and the recorded digest is reproducible.
+pub fn capability_manifest_bytes(manifest: &CapabilityManifest) -> Vec<u8> {
+    let value = serde_json::to_value(manifest).expect("the manifest serializes");
+    let mut sorted = serde_json::Map::new();
+    for (key, item) in value.as_object().expect("the manifest is an object") {
+        sorted.insert(key.clone(), item.clone());
+    }
+    let mut bytes = serde_json::to_vec(&serde_json::Value::Object(sorted))
+        .expect("the canonical manifest serializes");
+    bytes.push(b'\n');
+    bytes
+}
+
+/// The sha256 hex digest of the manifest's canonical bytes.
+pub fn capability_manifest_digest(manifest: &CapabilityManifest) -> String {
+    let bytes = capability_manifest_bytes(manifest);
+    let hex: String = Sha256::digest(&bytes)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect();
+    hex
+}
+
+/// The commands the build must have observed probes for before the manifest is
+/// recorded: every catalog tool probe, its components' probes, then declared
+/// probes, in probe order (#4485 decision 1).
+pub fn required_probe_commands(inputs: &CapabilityManifestInputs) -> Vec<Vec<String>> {
+    probe_runs(&inputs.spec)
+        .into_iter()
+        .map(|run| run.command)
+        .collect()
+}
+
+/// Fail a build that did not observe one required probe, naming the exact
+/// command that did not answer (#4485 decision 1). The manifest is
+/// closed-world evidence: a capability the build did not observe is absent,
+/// and the build refuses to record a capability it did not observe.
+pub fn require_probe(command: &[String], reason: &str) -> Result<()> {
+    let Some(argv0) = command.first() else {
+        bail!(
+            "a required probe has a blank command; the build refuses to record a capability it \
+             did not observe"
+        );
+    };
+    if argv0.trim().is_empty() {
+        bail!(
+            "a required probe has a blank executable as its first command word; the build refuses \
+             to record a capability it did not observe"
+        );
+    }
+    let joined = command
+        .iter()
+        .map(|word| format!("{word:?}"))
+        .collect::<Vec<_>>()
+        .join(" ");
+    bail!(
+        "required probe `{joined}` failed: {reason}; the build refuses to record a capability it \
+         did not observe"
+    );
+}
+
+/// One binding the upgrade report flags: it lacks a matching capability record
+/// for the image and bundle it currently runs (#4485 decision 6, AC5).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct LackingBinding {
+    /// The binding's own name, as the Helm values name it.
+    pub binding: String,
+    /// The current runner image digest the binding deploys, when known.
+    pub image_digest: Option<String>,
+    /// The current deployed bundle digest, when known.
+    pub bundle_digest: Option<String>,
+    /// The action the operator takes: rebuild, render and redeploy this
+    /// binding so its current image and bundle get a recorded manifest.
+    pub action: String,
+}
+
+/// The upgrade report for a set of bindings (#4485 decision 6, AC5): each
+/// active factory binding whose current image and bundle lack a matching
+/// capability record, so the operator can regenerate and redeploy it before
+/// manifest-based admission is enabled. A runner-image rebind alone does not
+/// mark a binding ready: the record is bound to both the image AND the bundle
+/// digests, so a rebind that keeps the old bundle stays in this list.
+///
+/// Pure: the caller reads which bindings exist and which records match, and
+/// this decides the report. A binding is ready only when a recorded manifest
+/// names exactly its current image and bundle digests.
+pub fn upgrade_plan(bindings: &[BindingRecord]) -> Vec<LackingBinding> {
+    bindings
+        .iter()
+        .filter(|binding| !binding.capability_recorded)
+        .map(|binding| LackingBinding {
+            binding: binding.name.clone(),
+            image_digest: binding.image_digest.clone(),
+            bundle_digest: binding.bundle_digest.clone(),
+            action: format!(
+                "rebuild the runner image, render the bundle and redeploy binding {:?} so its \
+                 current image and bundle get a recorded capability manifest",
+                binding.name
+            ),
+        })
+        .collect()
+}
+
+/// One binding the upgrade report reads: its name, the image and bundle
+/// digests it currently runs, and whether a recorded capability manifest
+/// matches both (#4485 decision 6).
+#[derive(Debug, Clone, PartialEq)]
+pub struct BindingRecord {
+    pub name: String,
+    pub image_digest: Option<String>,
+    pub bundle_digest: Option<String>,
+    /// True only when a recorded manifest binds to exactly this image AND
+    /// bundle digest. A runner-image rebind alone leaves it false.
+    pub capability_recorded: bool,
 }
 
 /// Each platform's manifest digest from an OCI or Docker image index, skipping
