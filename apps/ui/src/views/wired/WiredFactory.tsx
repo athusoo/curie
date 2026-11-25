@@ -112,8 +112,12 @@ function Board({
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 420px", gap: 16, alignItems: "start" }}>
-        <div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10 }}>
+        <div style={{ minWidth: 0 }}>
+          <div data-testid="factory-lanes-scroll" style={{ overflowX: "auto" }}>
+          <div
+            data-testid="factory-lanes-grid"
+            style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(200px, 1fr))", gap: 10 }}
+          >
             {LANES.map((lane) => {
               const all = lanes[lane.id];
               const shown = lane.id === "shipped" ? all.slice(0, SHIPPED_CAP) : all;
@@ -167,6 +171,7 @@ function Board({
                 </section>
               );
             })}
+          </div>
           </div>
           {cancelled > 0 ? (
             <div data-testid="factory-cancelled" style={{ marginTop: 10, fontSize: 12, color: C.muted }}>
