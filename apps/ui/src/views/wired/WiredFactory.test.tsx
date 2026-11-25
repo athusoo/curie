@@ -262,6 +262,18 @@ describe("WiredFactory (#4102)", () => {
     expect(screen.getByTestId("factory-cancelled")).toHaveTextContent("1 cancelled");
   });
 
+  it("keeps lanes at least 200px wide and scrolls the lane area horizontally", async () => {
+    vi.mocked(listWorkItems).mockResolvedValue(list([outcome({ id: "q1", state: "queued", issue: 1 })]));
+    renderView();
+    const scroll = await screen.findByTestId("factory-lanes-scroll");
+    const grid = screen.getByTestId("factory-lanes-grid");
+    // Read element.style directly: jsdom may normalise minmax() in toHaveStyle.
+    expect(scroll.style.overflowX).toBe("auto");
+    expect(scroll.contains(grid)).toBe(true);
+    expect(grid.style.gridTemplateColumns).toBe("repeat(4, minmax(200px, 1fr))");
+    for (const id of LANE_IDS) expect(grid.contains(lane(id))).toBe(true);
+  });
+
   it("titles each lane and shows its count", async () => {
     vi.mocked(listWorkItems).mockResolvedValue(
       list([
